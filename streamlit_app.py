@@ -1,151 +1,105 @@
+import numpy as np
+from scipy.stats import norm
+
 import streamlit as st
-import pandas as pd
-import math
-from pathlib import Path
-
-# Set the title and favicon that appear in the Browser's tab bar.
-st.set_page_config(
-    page_title='GDP dashboard',
-    page_icon=':earth_americas:', # This is an emoji shortcode. Could be a URL too.
-)
-
-# -----------------------------------------------------------------------------
-# Declare some useful functions.
-
-@st.cache_data
-def get_gdp_data():
-    """Grab GDP data from a CSV file.
-
-    This uses caching to avoid having to read the file every time. If we were
-    reading from an HTTP endpoint instead of a file, it's a good idea to set
-    a maximum age to the cache with the TTL argument: @st.cache_data(ttl='1d')
-    """
-
-    # Instead of a CSV on disk, you could read from an HTTP endpoint here too.
-    DATA_FILENAME = Path(__file__).parent/'data/gdp_data.csv'
-    raw_gdp_df = pd.read_csv(DATA_FILENAME)
-
-    MIN_YEAR = 1960
-    MAX_YEAR = 2022
-
-    # The data above has columns like:
-    # - Country Name
-    # - Country Code
-    # - [Stuff I don't care about]
-    # - GDP for 1960
-    # - GDP for 1961
-    # - GDP for 1962
-    # - ...
-    # - GDP for 2022
-    #
-    # ...but I want this instead:
-    # - Country Name
-    # - Country Code
-    # - Year
-    # - GDP
-    #
-    # So let's pivot all those year-columns into two: Year and GDP
-    gdp_df = raw_gdp_df.melt(
-        ['Country Code'],
-        [str(x) for x in range(MIN_YEAR, MAX_YEAR + 1)],
-        'Year',
-        'GDP',
-    )
-
-    # Convert years from string to integers
-    gdp_df['Year'] = pd.to_numeric(gdp_df['Year'])
-
-    return gdp_df
-
-gdp_df = get_gdp_data()
-
-# -----------------------------------------------------------------------------
-# Draw the actual page
-
-# Set the title that appears at the top of the page.
-'''
-# :earth_americas: GDP dashboard
-
-Browse GDP data from the [World Bank Open Data](https://data.worldbank.org/) website. As you'll
-notice, the data only goes to 2022 right now, and datapoints for certain years are often missing.
-But it's otherwise a great (and did I mention _free_?) source of data.
-'''
-
-# Add some spacing
-''
-''
-
-min_value = gdp_df['Year'].min()
-max_value = gdp_df['Year'].max()
-
-from_year, to_year = st.slider(
-    'Which years are you interested in?',
-    min_value=min_value,
-    max_value=max_value,
-    value=[min_value, max_value])
-
-countries = gdp_df['Country Code'].unique()
-
-if not len(countries):
-    st.warning("Select at least one country")
-
-selected_countries = st.multiselect(
-    'Which countries would you like to view?',
-    countries,
-    ['DEU', 'FRA', 'GBR', 'BRA', 'MEX', 'JPN'])
-
-''
-''
-''
-
-# Filter the data
-filtered_gdp_df = gdp_df[
-    (gdp_df['Country Code'].isin(selected_countries))
-    & (gdp_df['Year'] <= to_year)
-    & (from_year <= gdp_df['Year'])
-]
-
-st.header('GDP over time', divider='gray')
-
-''
-
-st.line_chart(
-    filtered_gdp_df,
-    x='Year',
-    y='GDP',
-    color='Country Code',
-)
-
-''
-''
 
 
-first_year = gdp_df[gdp_df['Year'] == from_year]
-last_year = gdp_df[gdp_df['Year'] == to_year]
+def calculatePrice(S,X,r,var,q,t,type='c'):
+    d1=(np.log(S/X)+t*(r-q+(var**2)/2))/(var*np.sqrt(t))
+    d2=d1-var*np.sqrt(t)
+    # print(d1,' ',d2)
+    # print('\n')
 
-st.header(f'GDP in {to_year}', divider='gray')
+    if(type=='c'):
+        optionPrice=S*(np.exp(-1*q*t))*norm.cdf(d1)-X*np.exp(-1*r*t)*norm.cdf(d2)
+    else:
+        optionPrice=X*np.exp(-1*r*t)*norm.cdf(-1*d2)-S*np.exp(-1*q*t)*norm.cdf(-1*d1)
+    return optionPrice
 
-''
 
-cols = st.columns(4)
+def optionDelta(S,X,r,var,q,t,type='c'):
+    d1=(np.log(S/X)+t*(r-q+(var**2)/2))/(var*np.sqrt(t))
+    d2=d1-var*np.sqrt(t)
 
-for i, country in enumerate(selected_countries):
-    col = cols[i % len(cols)]
+    if(type=='c'):
+        optionD=np.exp(-1*q*t)*norm.cdf(d1)
+    else:
+        optionD=np.exp(-1*q*t)*(norm.cdf(-1*d1)-1)
+    return optionD
 
-    with col:
-        first_gdp = first_year[first_year['Country Code'] == country]['GDP'].iat[0] / 1000000000
-        last_gdp = last_year[last_year['Country Code'] == country]['GDP'].iat[0] / 1000000000
+def optionGamma(S,X,r,var,q,t):
+    d1=(np.log(S/X)+t*(r-q+(var**2)/2))/(var*np.sqrt(t))
+    gamma=np.exp(-1*q*t)*norm.pdf(d1)/(S*var*np.sqrt(t))
+    return gamma
 
-        if math.isnan(first_gdp):
-            growth = 'n/a'
-            delta_color = 'off'
-        else:
-            growth = f'{last_gdp / first_gdp:,.2f}x'
-            delta_color = 'normal'
+def optionTheta(S,X,r,var,q,t,type='c'):
+    d1=(np.log(S/X)+t*(r-q+(var**2)/2))/(var*np.sqrt(t))
+    d2=d1-var*np.sqrt(t)
 
-        st.metric(
-            label=f'{country} GDP',
-            value=f'{last_gdp:,.0f}B',
-            delta=growth,
-            delta_color=delta_color
-        )
+    if(type=='c'):
+        theta=(-1*(S*var*np.exp(-1*q*t)*norm.pdf(d1))/(2*np.sqrt(t))-r*X*np.exp(-1*r*t)*norm.cdf(d2)+q*S*np.exp(-1*q*t)*norm.cdf(d1))/t
+    else:
+        theta=(-1*(S*var*np.exp(-1*q*t*norm.pdf(d1))/(2*np.sqrt(t)))+r*X*np.exp(-1*r*t)*norm.cdf(-1*d2)-q*S*np.exp(-1*q*t)*norm.cdf(-1*d1))/t
+    return theta
+
+def optionVega(S,X,r,var,q,t):
+    d1=(np.log(S/X)+t*(r-q+(var**2)/2))/(var*np.sqrt(t))
+    d2=d1-var*np.sqrt(t)
+    vega=S*np.exp(-1*q*t)*np.sqrt(t)*norm.pdf(d1)/100
+    return vega
+
+def optionRho(S,X,r,var,q,t,type='c'):
+    d1=(np.log(S/X)+t*(r-q+(var**2)/2))/(var*np.sqrt(t))
+    d2=d1-var*np.sqrt(t)
+
+    if(type=='c'):
+        rho=X*t*np.exp(-1*r*t)*norm.cdf(d2)/100
+    else:
+        rho=-1*(X*t*np.exp(-1*r*t)*norm.cdf(-1*d2))/100
+    return rho
+
+
+st.set_page_config(page_title="Black-Scholes Model")
+
+sidebar_title = st.sidebar.header("Black-Scholes Parameters")
+space = st.sidebar.header("")
+r = st.sidebar.number_input("Risk-Free Rate", min_value=0.000, max_value=1.000, step=0.001, value=0.030)
+S = st.sidebar.number_input("Underlying Asset Price", min_value=1.00, step=0.10, value=30.00)
+X = st.sidebar.number_input("Strike Price", min_value=1.00, step=0.10, value=50.00)
+days_to_expiry = st.sidebar.number_input("Time to Expiry Date (in days)", min_value=1, step=1, value=250)
+var = st.sidebar.number_input("Volatility", min_value=0.000, max_value=1.000, step=0.01, value=0.30)
+q= st.sidebar.number_input("Dividend Yield", min_value=0.00, max_value=1.000,step=0.10, value=0.00)
+type_input = st.sidebar.selectbox("Option Type",["Call", "Put"])
+
+
+type=""
+if type_input=="Call":
+    type = "c"
+elif type_input=="Put":
+    type = "p"
+
+T = days_to_expiry/365
+
+prices = calculatePrice(S,X,r,var,q,T, type)
+deltas = optionDelta(S,X,r,var,q,T, type)
+gammas = optionGamma(S,X,r,var,q,T)
+thetas = optionTheta(S,X,r,var,q,T, type)
+vegas = optionVega(S,X,r,var,q,T)
+rhos = optionRho(S,X,r,var,q,T, type)
+
+
+st.markdown("<h2 align='center'>Black-Scholes Option Price Calculator</h2>", unsafe_allow_html=True)
+st.markdown("<h5 align='center'>Made by Samarth Bhutani</h5>", unsafe_allow_html=True)
+st.header("")
+st.markdown("<h3 align='center'>Option Prices and Greeks</h3>", unsafe_allow_html=True)
+st.header("")
+col1, col2, col3, col4, col5 = st.columns(5)
+col2.metric("Call Price", str(round(calculatePrice(S,X,r,var,q,T, type="c"), 3)))
+col4.metric("Put Price", str(round(calculatePrice(S,X,r,var,q,T, type="p"), 3)))
+
+bcol1, bcol2, bcol3, bcol4, bcol5 = st.columns(5)
+bcol1.metric("Delta", str(round(calculatePrice(S,X,r,var,q,T, type), 3)))
+bcol2.metric("Gamma", str(round(optionGamma(S,X,r,var,q,T), 3)))
+bcol3.metric("Theta", str(round(optionTheta(S,X,r,var,q,T, type), 3)))
+bcol4.metric("Vega", str(round(optionVega(S,X,r,var,q,T), 3)))
+bcol5.metric("Rho", str(round(optionRho(S,X,r,var,q,T, type), 3)))
